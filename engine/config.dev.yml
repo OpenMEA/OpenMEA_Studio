@@ -1,0 +1,35 @@
+openmea:
+  host: "127.0.0.1"
+  port: 8022
+  username: root
+  password: root
+  fifo_dev_files:
+    - "/studio/output/intanfifo_0x43c20000.bin"
+    - "/studio/output/intanfifo_0x43c30000.bin"
+    - "/studio/output/intanfifo_0x43c40000.bin"
+    - "/studio/output/intanfifo_0x43c50000.bin"
+  write_evenly_tool: "/root/brainkern/write_evenly/write_evenly --append"
+  device_command_format: "echo '{}' >> /studio/output/intanctrl.txt"
+  remove_remote_files: true
+  remote_file_location: "/studio/output/tmp"   # must not add trailing '/'
+  get_device_state_command: "cat /studio/output/intanctrl.status"
+  device_init_commands:
+    - "sleep 3"
+    - "sleep 1"
+    - "sleep 3"
+    - "echo '00000000a,00002710,00000002,0,0' > /studio/output/intanctrl.status"
+
+neuroprobe:
+  host: "127.0.0.1"
+  port: 8022
+  username: root
+  password: root
+  device_command_format: "echo '{}' >> /studio/output/intanctrl.txt"
+  remove_remote_files: true
+  remote_file_location: "/studio/output/tmp"   # must not add trailing '/'
+  get_device_state_command: "cat /studio/output/intanctrl.status"
+  device_init_commands:
+    - "sleep 3"
+    - "sleep 1"
+    - "sleep 3"
+    #- "echo '00000000a,00002710,0,0,0,0,0,0,00002710,0,0' > /studio/output/intanctrl.status"

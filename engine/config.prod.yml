@@ -1,0 +1,43 @@
+openmea:
+  host: "10.42.0.128"
+  port: 22
+  username: root
+  password: root
+  fifo_dev_files:
+    - "/dev/intanfifo_0x43c20000"
+    - "/dev/intanfifo_0x43c30000"
+    - "/dev/intanfifo_0x43c40000"
+    - "/dev/intanfifo_0x43c50000"
+  write_evenly_tool: "/root/brainkern/write_evenly/write_evenly"
+  device_command_format: "echo '{}' > /dev/intanctrl"
+  remove_remote_files: true
+  remote_file_location: "/tmp"   # must not add trailing '/'
+  get_device_state_command: "cat /dev/intanctrl"
+  device_init_commands:
+    - "cd /root/brainkern/drivers ; make clean"
+    - "cd /root/brainkern/drivers ; make"
+    - "cd /root/brainkern/drivers ; insmod intanctrl.ko"
+    - "cd /root/brainkern/drivers ; insmod intanfifo.ko"
+    - "cd /root/brainkern/write_evenly ; make clean"
+    - "cd /root/brainkern/write_evenly ; make"
+    - "cd /root/brainkern/packetizer ; make clean"
+    - "cd /root/brainkern/packetizer ; make"
+    - "nohup /root/brainkern/packetizer/packetizer.exe > /dev/null 2>&1 &"
+
+neuroprobe:
+  host: "10.42.0.128"
+  port: 22
+  username: root
+  password: root
+  device_command_format: "echo '{}' > /dev/neuroprobe_ctrl"
+  remove_remote_files: true
+  remote_file_location: "/tmp"   # must not add trailing '/'
+  get_device_state_command: "cat /dev/neuroprobe_ctrl"
+  device_init_commands:
+    - "cd /root/brainkern/drivers ; make clean"
+    - "cd /root/brainkern/drivers ; make"
+    - "cd /root/brainkern/drivers ; insmod neuroprobe_ctrl.ko"
+    - "cd /root/brainkern/drivers ; insmod neuroprobe_fifo.ko"
+    - "cd /root/brainkern/packetizer ; make clean"
+    - "cd /root/brainkern/packetizer ; make"
+    - "nohup /root/brainkern/packetizer/neuroprobe_packetizer.exe > /dev/null 2>&1 &"

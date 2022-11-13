@@ -1,0 +1,6 @@
+export const IPC_CHANNEL_PYTHON_INSTALLLOG_MESSAGE = 'l'
+
+export const IPC_CHANNEL_PYTHON_INSTALL_STATUS_REQUEST = 'py_sreq'
+export const IPC_CHANNEL_PYTHON_INSTALL_STATUS_REPLY = 'py_srep'
+
+export const IPC_CHANNEL_PYTHON_INSTALLED_EVENT = 'py_installed'

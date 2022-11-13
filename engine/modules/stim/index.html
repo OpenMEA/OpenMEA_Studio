@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+
+<style>
+    text {
+        font: 12px times-new-roman;
+    }
+
+    rect.background {
+        fill: white;
+    }
+
+    .left-div{
+        float: left;
+        /*height: "900";
+        width: "750";*/
+    }
+
+    .right-div{
+        float: right;
+        /*height: "900";
+        width: "750";*/
+    }
+</style>
+
+<body>
+
+<script src="https://d3js.org/d3.v3.min.js"></script>
+<script src="https://d3js.org/d3-color.v1.min.js"></script>
+<script src="https://d3js.org/d3-interpolate.v1.min.js"></script>
+<script src="https://d3js.org/d3-scale-chromatic.v1.min.js"></script>
+<script src="https://cdn.socket.io/4.1.2/socket.io.min.js" integrity="sha384-toS6mmwu70G0fw54EGlWWeA4z3dyJ+dlXBtSURSKN4vyRFOcxd3Bzjj/AoOwY+Rg" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsep@0.4.0/build/jsep.min.js"></script>
+
+
+<div class="left-div" id="stimgridDiv">
+    <h1 align="center">
+        <b>MEA Stimulation Status</b>
+    </h1>
+
+</div>
+
+<div class="right-div" id="interactiveDiv"></div>
+
+<script>
+    const STIM_CELL_SIZE = 30;
+    const STIM_GRID_SIZE = STIM_CELL_SIZE * 8;
+
+    const socket = io('http://localhost:4999/');
+    let webready = false;
+
+    socket.on("connect", function() {
+        webready = true;
+    });
+
+    socket.on("disconnect", function() {
+        webready = false;
+        socket.connect();
+    });
+
+    socket.on("grid", function (grid) {
+        const data = JSON.parse(grid);
+        for (let i = 0; i < 8; i++) {
+            for (let j = 0; j < 8; j++) {
+                const not_electrode = (i==0 && j==0) || (i==7 && j==0) || (i==0 && j==7) || (i==7 && j==7);
+
+                if (not_electrode) {
+                    continue;
+                }
+
+                let place = buffer[i][j];
+                let prev = null;
+                while (place != null) {
+                    prev = place;
+                    place = prev.next;
+                }
+                if (prev != null) {
+                    prev.next = new BufferValue(data[i][j]);
+                }
+                else {
+                    buffer[i][j] = new BufferValue(data[i][j]);
+                }
+            }
+        }
+    });
+
+    socket.on("wave", function (wave) {
+        waveform = JSON.parse(wave);
+    });
+
+    const stimsvg = d3.select("#stimgridDiv").append("svg")
+                                           .attr("width", STIM_GRID_SIZE)
+                                           .attr("height", STIM_GRID_SIZE)
+                                           .attr("id", "stim_grid"); //global
+
+    let selected_var = {perm: null, coord: null, win_type: null, stim: null}; //global
+
+    const right_div = document.getElementById("interactiveDiv"); //global
+
+    const buffer = Array.from({length: 8}, () => Array.from({length: 8}, () => null));
+    buffer[0][0] = 0;
+    buffer[0][7] = 0;
+    buffer[7][0] = 0;
+    buffer[7][7] = 0;
+
+    class BufferValue {
+        constructor(value, next = null) {
+            this._value = value;
+            this._next = next;
+        }
+
+        get value() {return this._value;}
+        get next() {return this._next;}
+        set next(buf_val) {
+            this._next = buf_val;
+        }
+    }
+    
+    let waveform = Array.from({length: 300}, () => 0);
+
+    const onClickClearButton = () => {
+        reset_select();
+        clear_right();
+        if (document.getElementById("outline") != null) {
+            stimgrid.removeChild(document.getElementById("outline"));
+        }
+    }
+    
+    const onClickPauseButton = ()  => {
+        socket.emit("pause", "0");
+        if (pauseButton.innerHTML == "Start") {
+            pauseButton.innerHTML = "Pause";
+        }
+        else {
+            pauseButton.innerHTML = "Start";
+        }
+    }
+
+    const clearButton = document.createElement("button");
+    clearButton.innerHTML = "Clear";
+    clearButton.setAttribute("onclick", onClickClearButton);
+    document.body.appendChild(clearButton);
+
+    const pauseButton = document.createElement("button");
+    pauseButton.innerHTML = "Start";
+    pauseButton.setAttribute("onclick", onClickPauseButton);
+    document.body.appendChild(pauseButton);
+
+    document.addEventListener("mouseover", onChannelHoveredOver);
+
+    const stimgrid = document.getElementById("stim_grid");
+    stimgrid.addEventListener("dblclick", createGUI);
+    stimgrid.addEventListener("click", onChannelClicked);
+
+    function initLeft() {
+        stimsvg.append("rect")
+               .attr("fill", "black")
+               .attr("width", STIM_GRID_SIZE)
+               .attr("height", STIM_GRID_SIZE)
+               .attr("cursor", "pointer");
+        for (let i = 0; i < 8; i++) {
+            for (let j = 0; j < 8; j++) {
+                const not_electrode = (i==0 && j==0) || (i==7 && j==0) || (i==0 && j==7) || (i==7 && j==7);
+
+                if (not_electrode) {
+                    continue;
+                }
+
+                const xstep = (i * STIM_CELL_SIZE).toString();
+                const ystep = (j * STIM_CELL_SIZE).toString();
+                const colour = get_colour(0);
+                stimsvg.append("rect")
+                       .attr("id", i.toString() + j.toString())
+                       .attr("width", `${STIM_CELL_SIZE}`)
+                       .attr("height", `${STIM_CELL_SIZE}`)
+                       .attr("x", xstep)
+                       .attr("y", ystep)
+                       .attr("fill", colour)
+                       .attr("pointer-events", "all")
+                       .attr("cursor", "pointer");
+            }
+        }
+    }
+
+    function onChannelHoveredOver(e) {
+        if (selected_var.perm != true) {
+            const x = e.target.getAttribute("x");
+            const y = e.target.getAttribute("y");
+
+            if (x != null && y != null) {
+                const x_coord = Math.round(x / STIM_CELL_SIZE);
+                const y_coord = Math.round(y / STIM_CELL_SIZE);
+                selected_var.coord = [x_coord, y_coord];
+                selected_var.win_type = "vis";
+
+                if (webready == true) {
+                    socket.emit("index", selected_var.coord[0].toString() + selected_var.coord[1].toString());
+                }
+            }
+        }
+    }
+
+    function createGUI(e) {
+        const x = e.target.getAttribute("x");
+        const y = e.target.getAttribute("y");
+
+        if (x != null && y != null) {
+            const x_coord = Math.round(x / STIM_CELL_SIZE);
+            const y_coord = Math.round(y / STIM_CELL_SIZE);
+            selected_var.perm = true;
+            selected_var.coord = [x_coord, y_coord];
+            selected_var.win_type = "cre";
+            selected_var.stim = "sin";
+        }
+    }
+
+    function onChannelClicked(e) {
+        const x = e.target.getAttribute("x");
+        const y = e.target.getAttribute("y");
+
+        if (x != null && y != null) {
+            const x_coord = Math.round(x / STIM_CELL_SIZE);
+            const y_coord = Math.round(y / STIM_CELL_SIZE);
+
+            selected_var.perm = true;
+            selected_var.coord = [x_coord, y_coord];
+            selected_var.win_type = "vis";
+
+            if (webready) {
+                socket.emit("index", selected_var.coord[0].toString() + selected_var.coord[1].toString());
+            }
+        }
+        else {
+            reset_select();
+        }
+    }
+
+    function clear_right() {
+        right_div.innerHTML = "";
+    }
+
+    function reset_select() {
+        selected_var = {perm: null, coord: null, win_type: null, stim: null};
+        if (webready == true) {
+            socket.emit("index", "0");
+        }
+    }
+
+    function soft_clear() {
+        const children = right_div.childNodes;
+
+        for (let i = children.length - 1; i > -1; i--) {
+            if (children[i].nodeName == "BUTTON" | children[i].nodeName == "H1") {
+                continue;
+
+            } else {
+                right_div.removeChild(children[i]);
+            }
+        }
+    }
+
+    function update_left() {
+        let ready = true;
+        for (let k = 0; k < 8; k++) {
+            if (buffer[k].includes(null)) {
+                ready = false;
+                break;
+            }
+        }
+
+        for (let i = 0; i < 8; i++) {
+            for (let j = 0; j < 8; j++) {
+                const not_electrode = (i==0 && j==0) || (i==7 && j==0) || (i==0 && j==7) || (i==7 && j==7);
+
+                if (not_electrode) {
+                    continue;
+                }
+
+                if (ready == true) {
+                    let stim_step = buffer[i][j].value;
+                    buffer[i][j] = buffer[i][j].next;
+                    stim_step = (stim_step - 0.5)*510;      //for testing only
+                    const colour = get_colour(stim_step);
+                    document.getElementById(i.toString() + j.toString()).setAttribute("fill", colour);
+                }
+            }
+        }
+
+        if (selected_var.perm == true) {
+            const i = selected_var.coord[0];
+            const j = selected_var.coord[1];
+            const xstep = (i * STIM_CELL_SIZE).toString();
+            const ystep = (j * STIM_CELL_SIZE).toString();
+
+            if (document.getElementById("outline") == null) {
+                stimsvg.append("rect")
+                       .attr("id", "outline")
+                       .attr("width", `${STIM_CELL_SIZE}`)
+                       .attr("height", `${STIM_CELL_SIZE}`)
+                       .attr("x", xstep)
+                       .attr("y", ystep)
+                       .attr("fill", "none")
+                       .attr("stroke", "red")
+                       .attr("stroke-width", 5)
+                       .attr("pointer-events", "all")
+                       .attr("cursor", "pointer");
+            
+            } else {
+                var outline = document.getElementById("outline");
+                outline.setAttribute("x", xstep);
+                outline.setAttribute("y", ystep);
+            }
+        } else if ((!selected_var.perm) && (document.getElementById("outline"))) {
+            stimgrid.removeChild(document.getElementById("outline"));
+        }
+    }
+
+    function get_colour(n) {
+        const norm = (n + 255) / 510;
+        return d3.interpolatePlasma(norm);
+    }
+
+    function build_right() {
+        if (!selected_var.coord) {
+            return null;
+        }
+
+        if (selected_var.win_type == "vis") {
+            clear_right();
+
+            if (!waveform) {
+                return null;
+            }
+
+            right_div.innerHTML = '<h1 align="center"> <b> Electrode ' + (selected_var.coord[0]+1).toString() + (selected_var.coord[1]+1).toString() + ' Stimulation Form </b></h1>';
+            const line_plot = d3.select('#interactiveDiv').append('svg')
+                                                        .attr("width", 720)
+                                                        .attr("height", 400)
+                                                        .attr("id", "line_plot");
+
+            data = new Array();
+            for (const [index, element] of waveform.entries()) {
+                data.push({time: index, value: element});
+            }
+
+            const xScale = d3.scale.ordinal()
+                            .rangeRoundBands([0, 720])
+                            .domain(data.map(function(d) {return d.time;}));
+            const yScale = d3.scale.linear()
+                            .domain([d3.min(data, function(d) {return d.value;}), d3.max(data, function(d) {return d.value;})])
+                            .range([400, 0]);
+            const xAxis = d3.svg.axis().scale(xScale).orient("bottom");
+            const yAxis = d3.svg.axis().scale(yScale).orient("left");
+            const line = d3.svg.line().x(function(d) {return xScale(d.time) + xScale.rangeBand()/2;})
+                                      .y(function(d) {return yScale(d.value);});
+
+            line_plot.append("g")
+                     .attr("class", "x axis")
+                     .attr("transform", "translate(0," + 400 + ")")
+                     .call(xAxis);
+            
+            line_plot.append("g")
+                     .attr("class", "y axis")
+                     .call(yAxis);
+
+            line_plot.append("path")
+                     .datum(data)
+                     .attr("fill", "none")
+                     .attr("stroke", "blue")
+                     .attr("stroke-width", 1.5)
+                     .attr("d", line);
+
+        } else if (selected_var.win_type == "cre") {
+            if (document.getElementById(selected_var.stim)) {
+                clear_right();
+                right_div.innerHTML = '<h1 align="center"> <b> Set Electrode ' + (selected_var.coord[0]+1).toString() + (selected_var.coord[1]+1).toString() + ' Stimulation</b></h1>';
+
+                const sine = document.createElement("button");
+                sine.innerHTML = "Sinusoid";
+                sine.setAttribute("onclick", 'change_stim("sin")');
+
+                const biphasic = document.createElement("button");
+                biphasic.innerHTML = "Biphasic Pulse(s)";
+                biphasic.setAttribute("onclick", 'change_stim("bip")');
+
+                const gaussian = document.createElement("button");
+                gaussian.innerHTML = "Gaussian Noise";
+                gaussian.setAttribute("onclick", 'change_stim("gau")');
+
+                const custom = document.createElement("button");
+                custom.innerHTML = "Custom Function";
+                custom.setAttribute("onclick", 'change_stim("cus")');
+
+                const wav = document.createElement("button");
+                wav.innerHTML = ".wav File";
+                wav.setAttribute("onclick", 'change_stim("wav")');
+
+                right_div.appendChild(sine);
+                right_div.appendChild(biphasic);
+                right_div.appendChild(gaussian);
+                right_div.appendChild(custom);
+                right_div.appendChild(wav);
+
+                const submit = document.createElement("button");
+                submit.innerHTML = "Submit";
+                submit.setAttribute("onclick", "submit_stim()");
+                right_div.appendChild(submit);
+
+                switch(selected_var.stim) {
+                    case "sin":
+                        displ_sine();
+                        break;
+                    case "bip":
+                        displ_biphasic();
+                        break;
+                    case "gau":
+                        displ_gaussian();
+                        break;
+                    case "cus":
+                        displ_custom();
+                        break;
+                    case "wav":
+                        displ_wav();
+                        break;
+                    default:
+                        displ_sine();
+                }
+            }
+        } else {
+            reset_select();
+        }
+    }
+
+    function change_stim(new_stim) {
+        selected_var.stim = new_stim;
+    }
+
+    function displ_sine() {
+        const form = document.createElement("form");
+        form.setAttribute("method", "post");
+        form.setAttribute("style", "text-align: center");
+        form.setAttribute("id", "sin");
+
+        const amplitude = document.createElement("INPUT");
+        amplitude.setAttribute("type", "range");
+        amplitude.setAttribute("max", 255);
+        amplitude.setAttribute("min", -255);
+        amplitude.setAttribute("step", 1);
+        amplitude.setAttribute("name", "amplitude");
+
+        const amp_label = document.createElement("LABEL");
+        amp_label.setAttribute("for", "amplitude");
+        amp_label.innerHTML = "Amplitude (mA)";
+
+        const frequency = document.createElement("INPUT");
+        frequency.setAttribute("type", "range");
+        frequency.setAttribute("max", 40);
+        frequency.setAttribute("min", 10);
+        frequency.setAttribute("step", 1);
+        frequency.setAttribute("name", "frequency");
+
+        const freq_label = document.createElement("LABEL");
+        freq_label.setAttribute("for", "frequency");
+        freq_label.innerHTML = "Frequency (kHz)";
+
+        const phase = document.createElement("INPUT");
+        phase.setAttribute("type", "range");
+        phase.setAttribute("max", 2*Math.PI);
+        phase.setAttribute("min", 0);
+        phase.setAttribute("defaultValue", 0);
+        phase.setAttribute("step", Math.PI/32);
+        phase.setAttribute("name", "phase");
+
+        const pha_label = document.createElement("LABEL");
+        pha_label.setAttribute("for", "phase");
+        pha_label.innerHTML = "Phase (rad)";
+
+        const coord = document.createElement("INPUT");
+        coord.setAttribute("type", "hidden");
+        coord.setAttribute("name", "coord");
+        coord.setAttribute("value", selected_var.coord[0].toString() + selected_var.coord[1].toString());
+
+        form.appendChild(amplitude);
+        form.appendChild(amp_label);
+        form.innerHTML = form.innerHTML + "<br>";
+        form.appendChild(frequency);
+        form.appendChild(freq_label);
+        form.innerHTML = form.innerHTML + "<br>";
+        form.appendChild(phase);
+        form.appendChild(pha_label);
+        form.appendChild(coord);
+        right_div.appendChild(form);
+    }
+
+    function displ_biphasic() {
+        const form = document.createElement("form");
+        form.setAttribute("method", "post");
+        form.setAttribute("style", "text-align: center");
+        form.setAttribute("id", "bip");
+
+        const amplitude = document.createElement("INPUT");
+        amplitude.setAttribute("type", "range");
+        amplitude.setAttribute("max", 255);
+        amplitude.setAttribute("min", -255);
+        amplitude.setAttribute("step", 1);
+        amplitude.setAttribute("name", "amplitude");
+
+        const amp_label = document.createElement("LABEL");
+        amp_label.setAttribute("for", "amplitude");
+        amp_label.innerHTML = "Amplitude (mA)";
+
+        const len1 = document.createElement("INPUT");
+        len1.setAttribute("type", "text");
+        len1.setAttribute("name", "length");
+        len1.setAttribute("placeholder", "Length (ms) of first phase");
+
+        const ratio = document.createElement("INPUT");
+        ratio.setAttribute("type", "range");
+        ratio.setAttribute("max", 100);
+        ratio.setAttribute("min", 0.01);
+        ratio.setAttribute("step", 0.01);
+        ratio.setAttribute("name", "ratio");
+
+        const rat_label = document.createElement("LABEL");
+        rat_label.setAttribute("for", "ratio");
+        rat_label.innerHTML = "Ratio of phase amplitudes";
+
+        const gap = document.createElement("INPUT");
+        gap.setAttribute("type", "text");
+        gap.setAttribute("name", "gap");
+        gap.setAttribute("placeholder", "Length (ms) of phase gap");
+
+        const repeat = document.createElement("INPUT");
+        repeat.setAttribute("type", "checkbox");
+        repeat.setAttribute("name", "repeat");
+
+        const rep_label = document.createElement("LABEL");
+        rep_label.setAttribute("for", "repeat");
+        rep_label.innerHTML = "Repeating Pulse?";
+
+        const coord = document.createElement("INPUT");
+        coord.setAttribute("type", "hidden");
+        coord.setAttribute("name", "coord");
+        coord.setAttribute("value", selected_var.coord[0].toString() + selected_var.coord[1].toString());
+
+        form.appendChild(amplitude);
+        form.appendChild(amp_label);
+        form.innerHTML = form.innerHTML + "<br>";
+        form.appendChild(len1);
+        form.innerHTML = form.innerHTML + "<br>";
+        form.appendChild(ratio);
+        form.appendChild(rat_label);
+        form.innerHTML = form.innerHTML + "<br>";
+        form.appendChild(gap);
+        form.innerHTML = form.innerHTML + "<br>";
+        form.appendChild(repeat);
+        form.appendChild(rep_label);
+        form.appendChild(coord);
+        right_div.appendChild(form);
+    }
+
+    function displ_gaussian() {
+        const form = document.createElement("form");
+        form.setAttribute("method", "post");
+        form.setAttribute("style", "text-align: center");
+        form.setAttribute("id", "gau");
+
+        const mean = document.createElement("INPUT");
+        mean.setAttribute("type", "text");
+        mean.setAttribute("name", "mean");
+        mean.setAttribute("placeholder", "Mean (mA) of Gaussian Noise");
+
+        const stdev = document.createElement("INPUT");
+        stdev.setAttribute("type", "text");
+        stdev.setAttribute("name", "stdev");
+        stdev.setAttribute("placeholder", "Standard Deviation (mA) of Gaussian Noise");
+
+        const low = document.createElement("INPUT");
+        low.setAttribute("type", "text");
+        low.setAttribute("name", "low");
+        low.setAttribute("placeholder", "Lower Cutoff (mA) of Gaussian Noise");
+
+        const upp = document.createElement("INPUT");
+        upp.setAttribute("type", "text");
+        upp.setAttribute("name", "upp");
+        upp.setAttribute("placeholder", "Upper Cutoff (mA) of Gaussian Noise");
+
+        const coord = document.createElement("INPUT");
+        coord.setAttribute("type", "hidden");
+        coord.setAttribute("name", "coord");
+        coord.setAttribute("value", selected_var.coord[0].toString() + selected_var.coord[1].toString());
+
+        form.appendChild(mean);
+        form.innerHTML = form.innerHTML + "<br>";
+        form.appendChild(stdev);
+        form.innerHTML = form.innerHTML + "<br>";
+        form.appendChild(low);
+        form.innerHTML = form.innerHTML + "<br>";
+        form.appendChild(upp);
+        form.appendChild(coord);
+        right_div.appendChild(form);
+    }
+
+    function displ_custom() {
+        const form = document.createElement("form");
+        form.setAttribute("method", "post");
+        form.setAttribute("style", "text-align: center");
+        form.setAttribute("id", "cus");
+
+        const text = document.createElement("INPUT")
+        text.setAttribute("type", "text");
+        text.setAttribute("name", "text");
+        text.setAttribute("id", "text");
+        text.setAttribute("placeholder", "Type your function here");
+
+        const coord = document.createElement("INPUT");
+        coord.setAttribute("type", "hidden");
+        coord.setAttribute("name", "coord");
+        coord.setAttribute("value", selected_var.coord[0].toString() + selected_var.coord[1].toString());
+        
+        form.appendChild(text);
+        form.appendChild(coord);
+        right_div.appendChild(form);
+    }
+
+    function displ_wav() {
+        const form = document.createElement("form");
+        form.setAttribute("method", "post");
+        form.setAttribute("style", "text-align: center");
+        form.setAttribute("id", "wav");
+
+        const file = document.createElement("INPUT");
+        file.setAttribute("type", "file");
+        file.setAttribute("name", "file");
+
+        const coord = document.createElement("INPUT");
+        coord.setAttribute("type", "hidden");
+        coord.setAttribute("name", "coord");
+        coord.setAttribute("value", selected_var.coord[0].toString() + selected_var.coord[1].toString());
+        
+        form.appendChild(file);
+        form.appendChild(coord);
+        right_div.appendChild(form);
+    }
+
+    function submit_stim() {
+        let i;
+        let ret ={"name": true};
+
+        if (document.getElementById("sin") != null) {
+            const children = document.getElementById("sin").children;
+            for (i = 0; i < children.length; i++) {
+                if (children[i].nodeName == "INPUT") {
+                    if (children[i].value == "") {
+                        alert("Error: One or more fields not filled out");
+                        return null;
+                    }
+                    else {
+                        ret[children[i].name] = children[i].value;
+                    }
+                }
+            }
+            delete ret["name"];
+            socket.emit("sin", JSON.stringify(ret));
+        }
+
+        if (document.getElementById("bip") != null) {
+            const children = document.getElementById("bip").children;
+            for (i = 0; i < children.length; i++) {
+                if (children[i].nodeName == "INPUT") {
+                    if (children[i].value == "") {
+                        alert("Error: One or more fields not filled out");
+                        return null;
+                    }
+                    else {
+                        ret[children[i].name] = children[i].value;
+                    }
+                }
+            }
+            delete ret["name"];
+            socket.emit("bip", JSON.stringify(ret));
+        }
+
+        if (document.getElementById("gau") != null) {
+            const children = document.getElementById("gau").children;
+            for (i = 0; i < children.length; i++) {
+                if (children[i].nodeName == "INPUT") {
+                    if (children[i].value == "") {
+                        alert("Error: One or more fields not filled out");
+                        return null;
+                    }
+                    else {
+                        ret[children[i].name] = children[i].value;
+                    }
+                }
+            }
+            delete ret["name"];
+            socket.emit("gau", JSON.stringify(ret));
+        }
+
+        if (document.getElementById("cus") != null) {
+            const children = document.getElementById("cus").children;
+            for (i = 0; i < children.length; i++) {
+                if (children[i].nodeName == "INPUT") {
+                    if (children[i].value == null) {
+                        alert("Error: One or more fields not filled out");
+                        return null;
+                    }
+                    else {
+                        ret[children[i].name] = children[i].value;
+                    }
+                }
+            }
+            try {
+                jsep(document.getElementById("text").value);
+                //math.parse(document.getElementById("text").value);
+            }
+            catch (error) {
+                alert(error);
+                return null;
+            }
+            delete ret["name"];
+            socket.emit("cus", JSON.stringify(ret));
+        }
+
+        if (document.getElementById("wav") != null) {
+            const children = document.getElementById("wav").children;
+            for (i = 0; i < children.length; i++) {
+                if (children[i].nodeName == "INPUT") {
+                    if (children[i].value == null) {
+                        alert("Error: One or more fields not filled out");
+                        return null;
+                    }
+                    else {
+                        ret[children[i].name] = children[i].value;
+                    }
+                }
+            }
+            delete ret["name"];
+            socket.emit("wav", JSON.stringify(ret));
+        }
+
+        clear_right();
+        reset_select();
+        right_div.innerHTML = '<p align="center"> Electrode ' + (selected_var.coord[0]+1).toString() + (selected_var.coord[1]+1).toString() + ' Stimulation Submitted </p>';
+    }
+
+    function main() {
+        update_left();
+        build_right();
+        setTimeout(main, 30);
+    }
+
+    initLeft();
+    main();
+</script>
+
+</body>
+</html>

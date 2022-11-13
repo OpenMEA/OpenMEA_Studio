@@ -1,0 +1,12 @@
+{
+    "general-comment": "This package.json will be included in the published Electron app and is not meant for development.",
+    
+    "name": "unit-studio",
+    "version": "__VERSION__",
+    "description": "OpenMEA Studio",
+    "main": "./main.bundle.js",
+    "author": "Iouri Khramtsov",
+    "license": "TBD",
+    "private": true
+  }
+  

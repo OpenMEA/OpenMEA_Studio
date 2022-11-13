@@ -1,0 +1,126 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+path.line {
+    color: red
+}
+
+h2 {
+    @apply my-2 text-lg font-semibold;
+}
+
+h3 {
+    @apply my-2 text-base font-semibold;
+}
+
+input.input-short, select.input-short {
+    @apply border rounded-md border-gray-300 px-1 py-0.5;
+    width: 70px;
+    text-align: right;
+    box-shadow:inset 1px 1px 1.5px 0 #ddd;
+}
+
+input.input-short.error {
+    @apply bg-red-100;
+    border-color: red;
+    border-width: 1px;
+}
+
+input[type=checkbox]:not(:checked) {
+    @apply border border-gray-300
+}
+
+select {
+    @apply border rounded-md border-gray-300 px-1 py-0.5;
+    box-shadow:inset 1px 1px 1.5px 0 #ddd;
+}
+
+label {
+    @apply mr-2;
+}
+
+.units {
+    @apply ml-1;
+}
+
+.sidebar-label {
+    display: inline-block;
+    width: 150px;
+}
+
+a, a:visited {
+    @apply text-blue-500
+}
+
+a:hover, a:active {
+    @apply text-blue-600
+}
+
+a.gray, a.gray:visited {
+    @apply text-gray-300
+}
+
+a.gray:hover, a.gray:active {
+    @apply text-blue-500
+}
+
+button {
+    @apply text-gray-500 bg-white rounded-md border border-gray-500 px-4 py-0.5;
+    box-shadow: 1px 1px 1.5px 0 #ddd;
+}
+
+button:hover {
+    @apply text-gray-700 bg-gray-50 rounded-md border border-gray-700 px-4 py-0.5;
+    box-shadow: 1px 1px 1.5px 0 #ddd;
+}
+
+button:active {
+    @apply text-gray-700 bg-gray-50 rounded-md border border-gray-700 px-4 py-0.5;
+    box-shadow: none;
+    transform: translate(1px, 1px)
+}
+
+button:disabled, button[disabled] {
+    @apply text-gray-500 bg-white rounded-md border border-gray-500 px-4 py-0.5;
+    box-shadow: 1px 1px 1.5px 0 #ddd;
+    cursor: not-allowed;
+}
+
+button.danger {
+    @apply text-white bg-red-500 border-0 rounded-md px-4 py-0.5;
+    box-shadow: 1px 1px 1.5px 0 #ddd;
+}
+
+button.danger:hover {
+    @apply text-white bg-red-600 border-0 rounded-md px-4 py-0.5;
+    box-shadow: 1px 1px 1.5px 0 #ddd;
+}
+
+button.danger:active {
+    @apply text-white bg-red-600 border-0 rounded-md px-4 py-0.5;
+    box-shadow: none;
+    transform: translate(1px, 1px)
+}
+
+button.primary {
+    @apply text-white bg-blue-500 border-0 rounded-md px-4 py-0.5;
+    box-shadow: 1px 1px 1.5px 0 #ddd;
+}
+
+button.primary:hover {
+    @apply text-white bg-blue-600 border-0 rounded-md px-4 py-0.5;
+    box-shadow: 1px 1px 1.5px 0 #ddd;
+}
+
+button.primary:active {
+    @apply text-white bg-blue-600 border-0 rounded-md px-4 py-0.5;
+    box-shadow: none;
+    transform: translate(1px, 1px)
+}
+
+button.primary:disabled, button.primary[disabled] {
+    @apply text-white bg-blue-300 border-0 rounded-md px-4 py-0.5;
+    box-shadow: none;
+    cursor: not-allowed;
+}
